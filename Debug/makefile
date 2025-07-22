@@ -64,7 +64,7 @@ main-build: myTop
 myTop: $(OBJS) $(USER_OBJS) makefile $(OPTIONAL_TOOL_DEPS)
 	@echo 'Building target: $@'
 	@echo 'Invoking: Cross G++ Linker'
-	g++  -o "myTop" $(OBJS) $(USER_OBJS) $(LIBS) -lncurses -lboost_system
+	g++  -o "myTop" $(OBJS) $(USER_OBJS) $(LIBS) -lncurses -lpanel
 	@echo 'Finished building target: $@'
 	@echo ' '
 
