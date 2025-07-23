@@ -6,7 +6,7 @@
 #include <vector>
 #include <sys/sysinfo.h>
 
-long int getUptime(){
+long int getUptime() {
 	struct sysinfo s_info;
 	sysinfo(&s_info);
 	return s_info.uptime;
@@ -47,6 +47,11 @@ int getInt(const char *str, size_t &pos) {
 	return ret;
 }
 
+int getInt(const char *str, size_t &pos, size_t len) {
+	int ret = atoi(str + pos);
+	return ret;
+}
+
 long int getLong(const char *str, size_t &pos) {
 	long int ret = atol(str + pos);
 	skipToNext(str, pos);
@@ -60,7 +65,9 @@ long long int getLongLong(const char *str, size_t &pos) {
 }
 
 char getChar(const char *str, size_t &pos) {
-	return str[pos++];
+	char ret = str[pos];
+	pos += 2;
+	return ret;
 }
 
 std::string getName(const char *str, size_t &pos) {
@@ -205,7 +212,7 @@ preProcInfo parseProcPidStat(const char *path) {
 	ret.arg_end = getLong(str, pos);
 	ret.env_start = getLong(str, pos);			//#50
 	ret.env_end = getLong(str, pos);
-	ret.exit_code = getInt(str, pos);
+	ret.exit_code = getInt(str, pos, size);
 
 	return ret;
 }
@@ -220,7 +227,7 @@ struct procInfo {
 	int processor;
 };
 
-procInfo getProcInfo(const char* path){
+procInfo getProcInfo(const char *path) {
 	procInfo ret;
 	auto info = parseProcPidStat(path);
 	ret.name = info.name;
@@ -229,7 +236,7 @@ procInfo getProcInfo(const char* path){
 	ret.vsize = info.vsize;
 	ret.processor = info.processor;
 	ret.startTime = info.starttime;
-	ret.activeTime = info.utime + info.stime + info.cutime+info.cstime;
+	ret.activeTime = info.utime + info.stime + info.cutime + info.cstime;
 	return ret;
 }
 
@@ -267,18 +274,18 @@ procStat parseProcStat() {
 	getline(&line, &size, stream);
 	while (line[0] == 'c' && line[1] == 'p' && line[2] == 'u') {
 		cpuStat stat;
-		size_t pos =0;
-		stat.name = getString(line,pos);
-		stat.user = getLong(line,pos);
-		stat.nice = getLong(line,pos);
-		stat.system = getLong(line,pos);
-		stat.idle = getLong(line,pos);
-		stat.iowait = getLong(line,pos);
-		stat.irq = getLong(line,pos);
-		stat.softirq = getLong(line,pos);
-		stat.steal = getLong(line,pos);
-		stat.guest = getLong(line,pos);
-		stat.guest_nice = getLong(line,pos);
+		size_t pos = 0;
+		stat.name = getString(line, pos);
+		stat.user = getLong(line, pos);
+		stat.nice = getLong(line, pos);
+		stat.system = getLong(line, pos);
+		stat.idle = getLong(line, pos);
+		stat.iowait = getLong(line, pos);
+		stat.irq = getLong(line, pos);
+		stat.softirq = getLong(line, pos);
+		stat.steal = getLong(line, pos);
+		stat.guest = getLong(line, pos);
+		stat.guest_nice = getLong(line, pos);
 		ret.cpus.push_back(stat);
 		getline(&line, &size, stream);
 	}
@@ -286,16 +293,16 @@ procStat parseProcStat() {
 	return ret;
 }
 
-struct cpuTime{
+struct cpuTime {
 	std::string name;
 	long int activeTime;
 	long int idleTime;
 };
 
-std::vector<cpuTime> getCpuTimes(){
+std::vector<cpuTime> getCpuTimes() {
 	procStat stat = parseProcStat();
 	std::vector<cpuTime> ret;
-	for(auto& it : stat.cpus){
+	for (auto &it : stat.cpus) {
 		cpuTime tmp;
 		tmp.name = it.name;
 		tmp.idleTime = it.idle;
@@ -305,5 +312,15 @@ std::vector<cpuTime> getCpuTimes(){
 	return ret;
 }
 
-
+std::string formatVmem(long int mem) {
+	if (mem < 9999) {
+		return std::to_string(mem) + "B";
+	} else if (mem < 99999) {
+		return std::to_string(mem / 1024) + "KB";
+	} else if (mem < 9999999) {
+		return std::to_string(mem / 1024 / 1024) + "MB";
+	} else {
+		return std::to_string(mem / 1024 / 1024 / 1024) + "GB";
+	}
+}
 
