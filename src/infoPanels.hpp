@@ -7,6 +7,18 @@
 #include <algorithm>
 #include <unistd.h>
 
+std::string stringProgressBar(WINDOW *win, int len, double percent) {
+	if (percent > 1)
+		percent = 1;
+	len -= 2;
+	std::string str { "[" };
+	int barLen = len * percent;
+	str += std::string(barLen, '|');
+	str += std::string(len - barLen, ' ');
+	str += "]";
+	return str;
+}
+
 struct cpuInfoWin {
 	WINDOW *win;
 	PANEL *panel;
@@ -16,6 +28,7 @@ struct cpuInfoWin {
 	cpuInfoWin(WINDOW *parent, int w, int l, int x, int y) {
 		win = newwin(l, w, x, y);
 		box(win, '|', '-');
+		mvwprintw(win, 0, 0, "[X]");
 		panel = new_panel(win);
 	}
 	~cpuInfoWin() {
@@ -36,11 +49,16 @@ struct cpuInfoWin {
 			for (auto &it : data) {
 				std::string str(it.name);
 
-				double precent = ((double) (it.activeTime
-						- prevActiveTime[it.name]) / hz) / (upTime - prevUpTime)
-						* 100;
+				double percent = ((double) (it.activeTime
+						- prevActiveTime[it.name]) / hz)
+						/ (upTime - prevUpTime);
 				prevActiveTime[it.name] = it.activeTime;
-				str += ": " + std::to_string(precent).substr(0, 5) + "%%";
+				if (it.name == "cpu") {
+					percent /= (data.size());
+				}
+				str += " " + std::to_string(percent * 100).substr(0, 4) + "%% ";
+				str += stringProgressBar(win, wx / cols - str.size() - 1,
+						percent);
 
 				mvwprintw(win, y++, x, str.c_str());
 				if (y >= wy - 1) {
@@ -61,22 +79,99 @@ struct cpuInfoWin {
 };
 
 struct dataTable {
-	WINDOW *win;
-	int x, y;
+	WINDOW *win = nullptr;
+	int x = 0, y = 0;
 	std::vector<std::string> colNames;
+	std::vector<int> colWidth;
+	int sum = 0;
+	int solidCount = 0;
+	unsigned int softWidth = 0;
+	dataTable(std::vector<std::string> colN, std::vector<int> colW) :
+			colNames(colN), colWidth(colW) {
+		for (int i : colWidth) {
+			if (i != 0) {
+				solidCount++;
+			}
+			sum += i;
+		}
 
-	dataTable(WINDOW *w, int wx, int wy) :
-			win(w), x(wx), y(wy) {
 	}
 
-	void printLine(std::vector<std::string> data) {
+	void init(WINDOW *w) {
+		win = w;
+		getmaxyx(win, y, x);
+		softWidth = (x - sum - 2) / (colNames.size() + 1 - solidCount);
+		printHeaders();
+	}
+
+	void printHeaders() {
+		std::string str;
+		for (unsigned int i = 0; i < colNames.size(); i++) {
+			unsigned int width = (
+					(i < colWidth.size() && colWidth[i] != 0) ?
+							colWidth[i] + 1 : softWidth);
+			if (colNames[i].size() > width) {
+				str += colNames[i].substr(0, width);
+			} else {
+				str += colNames[i];
+				int spaceLen = std::max<int>(0, width - colNames[i].size());
+				str += std::string(spaceLen, ' ');
+			}
+		}
+		mvwprintw(win, 1, 1, str.c_str());
+
+	}
+	void printLine(int i, std::vector<std::string> data) {
+		std::string str;
+		for (unsigned int i = 0; i < data.size(); i++) {
+			unsigned int width = (
+					(i < colWidth.size() && colWidth[i] != 0) ?
+							colWidth[i] + 1 : softWidth);
+			if (data[i].size() > width) {
+				str += data[i].substr(0, width);
+			} else {
+				str += data[i];
+				int spaceLen = std::max<int>(0, width - data[i].size());
+				str += std::string(spaceLen, ' ');
+			}
+		}
+		mvwprintw(win, i, 1, str.c_str());
 
 	}
 };
 
 enum sortModeEnum {
-	None, pidUp, pidDown, cpuUp, cpuDown,
+	None,
+	pidUp,
+	pidDown,
+	cpuUp,
+	cpuDown,
+	nameUp,
+	nameDown,
+	stateUp,
+	stateDown,
+	vmemUp,
+	vmemDown,
+	cpuNumUp,
+	cpuNumDown
 };
+
+int stateToScore(char c) {
+	switch (c) {
+	case 'R':
+		return 0;
+		break;
+	case 'S':
+		return 1;
+		break;
+	case 'Z':
+		return 2;
+		break;
+	default:
+		return 99;
+		break;
+	}
+}
 
 struct procInfoWin {
 	WINDOW *win;
@@ -84,18 +179,98 @@ struct procInfoWin {
 	long int hz = sysconf(_SC_CLK_TCK);
 	long int upTime;
 	int listOffset = 0;
+	bool toggleName = 1;
 	sortModeEnum sortMode = sortModeEnum::None;
-	std::unordered_map<int, std::pair<procInfo, double>> procMap;
+	std::unordered_map<int, procInfo> procMap;
+	dataTable table { { "pid", "state", "vmem", "cpu#", "cpu%%", "name" }, { 6,
+			6, 6, 5, 6 } };
+	std::vector<int> colChar { 'p', 's', 'v', 'r', 'c', 'n' };
 	procInfoWin(WINDOW *parent, int w, int l, int x, int y) {
 		win = newwin(l, w, x, y);
 		box(win, '|', '-');
 		panel = new_panel(win);
 		upTime = getUptime();
-		mvwprintw(win, 1, 1, "pid\tstate\tmem\tcpu#\tcpu%\tname");
+		table.init(win);
 	}
 	~procInfoWin() {
 		del_panel(panel);
 		delwin(win);
+	}
+
+	template<sortModeEnum base, sortModeEnum toggle>
+	void toggleSortMode() {
+		if (sortMode == base) {
+			sortMode = toggle;
+		} else {
+			sortMode = base;
+		}
+	}
+
+	void processMouse(MEVENT event) {
+		if (event.y == 1) {
+			int x = event.x;
+			unsigned int i = 0;
+			for (int w : table.colWidth) {
+				w += 1;
+				if (x > w) {
+					x -= w;
+					i++;
+				} else {
+					processChar(colChar[i]);
+					return;
+				}
+			}
+			if (x > 0) {
+				processChar(colChar.back());
+			}
+		}
+	}
+
+	void processChar(int c) {
+
+		if (c == KEY_UP) {
+			listOffset--;
+			if (listOffset < 0)
+				listOffset = 0;
+		} else if (c == KEY_DOWN) {
+			listOffset++;
+		} else {
+
+			switch (c) {
+			case 'o':
+				sortMode = sortModeEnum::None;
+				break;
+			case 'm':
+				toggleName = !toggleName;
+				break;
+			case 'c':
+				listOffset = 0;
+				toggleSortMode<sortModeEnum::cpuDown, sortModeEnum::cpuUp>();
+				break;
+			case 'p':
+				listOffset = 0;
+				toggleSortMode<sortModeEnum::pidDown, sortModeEnum::pidUp>();
+				break;
+			case 'n':
+				listOffset = 0;
+				toggleSortMode<sortModeEnum::nameUp, sortModeEnum::nameDown>();
+				break;
+			case 's':
+				listOffset = 0;
+				toggleSortMode<sortModeEnum::stateUp, sortModeEnum::stateDown>();
+				break;
+			case 'v':
+				listOffset = 0;
+				toggleSortMode<sortModeEnum::vmemDown, sortModeEnum::vmemUp>();
+				break;
+			case 'r':
+				listOffset = 0;
+				toggleSortMode<sortModeEnum::cpuNumUp, sortModeEnum::cpuNumDown>();
+				break;
+			}
+
+		}
+
 	}
 
 	void updateData() {
@@ -113,6 +288,9 @@ struct procInfoWin {
 
 				try {
 					info = getProcInfo(processPath.c_str());
+					processPath.pop();
+					processPath.push("cmdline");
+					info.cmdLine = getProcPidCmdline(processPath.c_str());
 					pids.insert(info.pid);
 				} catch (...) {
 					int pid = atoi(it->d_name);
@@ -125,7 +303,8 @@ struct procInfoWin {
 						- ((double) info.startTime / hz);
 				double percent = ((double) info.activeTime / hz) / seconds
 						* 100;
-				procMap[pid] = { info, percent };
+				info.cpuUsage = percent;
+				procMap[pid] = info;
 			}
 		}
 		for (auto it = procMap.begin(); it != procMap.end();) {
@@ -154,13 +333,105 @@ struct procInfoWin {
 		case sortModeEnum::cpuUp:
 			std::sort(vec.begin(), vec.end(),
 					[&procMap = procMap](int a, int b) {
-						return procMap[a].second < procMap[b].second;
+						if (procMap[a].cpuUsage != procMap[b].cpuUsage) {
+							return procMap[a].cpuUsage < procMap[b].cpuUsage;
+						} else {
+							return a < b;
+						}
 					});
 			break;
 		case sortModeEnum::cpuDown:
 			std::sort(vec.begin(), vec.end(),
 					[&procMap = procMap](int a, int b) {
-						return procMap[a].second > procMap[b].second;
+						if (procMap[a].cpuUsage != procMap[b].cpuUsage) {
+							return procMap[a].cpuUsage > procMap[b].cpuUsage;
+						} else {
+							return a < b;
+						}
+					});
+			break;
+		case sortModeEnum::nameDown:
+			std::sort(vec.begin(), vec.end(),
+					[&procMap = procMap](int a, int b) {
+						if (procMap[a].name != procMap[b].name) {
+							return procMap[a].name > procMap[b].name;
+						} else {
+							return a < b;
+						}
+					});
+			break;
+		case sortModeEnum::nameUp:
+			std::sort(vec.begin(), vec.end(),
+					[&procMap = procMap](int a, int b) {
+						if (procMap[a].name != procMap[b].name) {
+							return procMap[a].name < procMap[b].name;
+						} else {
+							return a < b;
+						}
+					});
+			break;
+		case sortModeEnum::stateDown:
+			std::sort(vec.begin(), vec.end(),
+					[&procMap = procMap](int a, int b) {
+						if (stateToScore(procMap[a].state)
+								!= stateToScore(procMap[b].state)) {
+							return stateToScore(procMap[a].state)
+									> stateToScore(procMap[b].state);
+						} else {
+							return a < b;
+						}
+					});
+			break;
+		case sortModeEnum::stateUp:
+			std::sort(vec.begin(), vec.end(),
+					[&procMap = procMap](int a, int b) {
+						if (stateToScore(procMap[a].state)
+								!= stateToScore(procMap[b].state)) {
+							return stateToScore(procMap[a].state)
+									< stateToScore(procMap[b].state);
+						} else {
+							return a < b;
+						}
+					});
+			break;
+		case sortModeEnum::vmemDown:
+			std::sort(vec.begin(), vec.end(),
+					[&procMap = procMap](int a, int b) {
+						if (procMap[a].vsize != procMap[b].vsize) {
+							return procMap[a].vsize > procMap[b].vsize;
+						} else {
+							return a < b;
+						}
+					});
+			break;
+		case sortModeEnum::vmemUp:
+			std::sort(vec.begin(), vec.end(),
+					[&procMap = procMap](int a, int b) {
+						if (procMap[a].vsize != procMap[b].vsize) {
+							return procMap[a].vsize < procMap[b].vsize;
+						} else {
+							return a < b;
+						}
+					});
+			break;
+		case sortModeEnum::cpuNumUp:
+			std::sort(vec.begin(), vec.end(),
+					[&procMap = procMap](int a, int b) {
+						if (procMap[a].processor != procMap[b].processor) {
+							return procMap[a].processor < procMap[b].processor;
+						} else {
+							return a < b;
+						}
+					});
+			break;
+		case sortModeEnum::cpuNumDown:
+			std::sort(vec.begin(), vec.end(),
+					[&procMap = procMap](int a, int b) {
+						if (procMap[a].processor != procMap[b].processor) {
+							return procMap[a].processor > procMap[b].processor;
+						} else {
+							return a < b;
+						}
 					});
 			break;
 		}
@@ -175,15 +446,16 @@ struct procInfoWin {
 		return ret;
 	}
 
-	void printPidData(int pid, int x, int y) {
-		auto &info = procMap[pid].first;
-		double percent = procMap[pid].second;
-		std::string str;
-		str += std::to_string(info.pid) + "\t" + info.state + "\t"
-				+ formatVmem(info.vsize) + "\t" + std::to_string(info.processor)
-				+ "\t" + std::to_string(percent).substr(0, 5) + "%%\t"
-				+ info.name;
-		mvwprintw(win, x, y, str.c_str());
+	void printPidData(int pid, int x) {
+		auto info = procMap[pid];
+		std::string name = (
+				toggleName == 0 ?
+						(info.cmdLine.size() > 0 ? info.cmdLine : info.name) :
+						info.name);
+		table.printLine(x,
+				{ std::to_string(info.pid), std::string(1, info.state),
+						formatVmem(info.vsize), std::to_string(info.processor),
+						std::to_string(info.cpuUsage).substr(0, 4) + "%%", name });
 	}
 
 	void printData() {
@@ -196,9 +468,10 @@ struct procInfoWin {
 		for (unsigned int i = 0; i < n; i++) {
 			if (i + listOffset < vec.size()) {
 				int pid = vec[i + listOffset];
-				printPidData(pid, i + 2, 1);
-				int x;
-				getyx(win, x, x);
+				printPidData(pid, i + 2);
+				int y, x;
+				getyx(win, y, x);
+				y = y + 0;
 				wprintw(win, std::string(wx - x - 1, ' ').c_str());
 			} else {
 				mvwprintw(win, i + 2, 1, std::string(wx - 2, ' ').c_str());

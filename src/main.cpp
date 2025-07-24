@@ -10,6 +10,8 @@ int main() {
 	noecho();
 	keypad(stdscr, TRUE);
 	curs_set(0);
+	mousemask(BUTTON1_CLICKED, nullptr);
+
 	mainWindow win;
 	bool exitFlag = true;
 	while (exitFlag) {
@@ -18,10 +20,19 @@ int main() {
 		win.proc->printData();
 		update_panels();
 		doupdate();
-		timeout(500);
+		timeout(1000);
 		int c = getch();
 		if (c == 'q') {
 			exitFlag = false;
+		} else if (c == KEY_MOUSE) {
+			MEVENT event;
+			if (getmouse(&event) == OK) {
+				if (event.x >= 0 && event.x <= 2 && event.y == 0) {
+					exitFlag = false;
+				} else {
+					win.processMouse(event);
+				}
+			}
 		} else if (c == KEY_RESIZE) {
 			clear();
 			win.resize();

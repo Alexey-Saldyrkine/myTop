@@ -73,7 +73,12 @@ char getChar(const char *str, size_t &pos) {
 std::string getName(const char *str, size_t &pos) {
 	std::string ret;
 	pos++;
-	while (str[pos] != ')') {
+	int count = 0;
+	while (str[pos] != ')' || count != 0) {
+		if (str[pos] == '(')
+			count++;
+		if (str[pos] == ')')
+			count--;
 		ret += str[pos++];
 	}
 	pos += 2;
@@ -147,6 +152,27 @@ struct preProcInfo {
 
 };
 
+std::string getProcPidCmdline(const char *path) {
+	FILE *stream = fopen(path, "r");
+	if (stream == nullptr) {
+		throw std::system_error(errno, std::generic_category(), path);
+	}
+	char *str = nullptr;
+	size_t size = 0;
+	auto_guard guard([&stream, &str]() {
+		free(str);
+		fclose(stream);
+	});
+	getline(&str, &size, stream);
+	std::string ret { str };
+	if (ret.size() > 0) {
+		if (!(ret[0] >= '.' && ret[0] <= 'z')) {
+			ret = "";
+		}
+	}
+	return ret;
+}
+
 preProcInfo parseProcPidStat(const char *path) {
 	FILE *stream = fopen(path, "r");
 	if (stream == nullptr) {
@@ -219,12 +245,14 @@ preProcInfo parseProcPidStat(const char *path) {
 
 struct procInfo {
 	std::string name;
+	std::string cmdLine;
 	int pid;
 	char state;
 	long int activeTime;
 	long int startTime;
 	long int vsize;
 	int processor;
+	double cpuUsage;
 };
 
 procInfo getProcInfo(const char *path) {
