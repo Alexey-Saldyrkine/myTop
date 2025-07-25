@@ -341,11 +341,11 @@ std::vector<cpuTime> getCpuTimes() {
 }
 
 std::string formatVmem(long int mem) {
-	if (mem < 9999) {
+	if (mem < 1024) {
 		return std::to_string(mem) + "B";
-	} else if (mem < 99999) {
+	} else if (mem < 1024*1024) {
 		return std::to_string(mem / 1024) + "KB";
-	} else if (mem < 9999999) {
+	} else if (mem < 1024*1024*1024) {
 		return std::to_string(mem / 1024 / 1024) + "MB";
 	} else {
 		return std::to_string(mem / 1024 / 1024 / 1024) + "GB";
