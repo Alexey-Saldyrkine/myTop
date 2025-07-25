@@ -30,7 +30,10 @@ struct mainWindow {
 	void resize() {
 		del_panel(mainPanel);
 		delwin(mainWin);
+		std::string filter = proc->table.filter;
 		initWindows();
+		proc->table.filter = filter;
+		proc->table.updateFilterBar();
 	}
 
 	void processKey(int c) {
