@@ -1,5 +1,4 @@
 # myTop
-my own implementation of top
 
 Reads /proc to gather the data on processes.
 
@@ -27,9 +26,11 @@ Process information has the following columns:
 
 Cpu usage if calculated as the amount of time spent active in an interval of time divided by the interval of time. This include child process active time. 
 
-##Hotkeys
+## Hotkeys
 - q - exit
-- f - enter filter edit mode. While in filter edit mode, if any characters between ' ' and '~' inclusively is pressed then it will be added to the filter. Backspace to remove the last character. Enter to exit filter edit mode.
+- up arrow - scroll up on the process list
+- down arrow - scroll down on the process list
+- f - enter filter edit mode. While in filter edit mode, if any characters between 'SPACE' and '~' inclusively is pressed then it will be added to the filter. Backspace to remove the last character. Enter to exit filter edit mode.
 - p - sort by pid in ascending order. If pressed twice in sequence it will sort by pid in descending order
 - s - sort by state in ascending order. If pressed twice in sequence it will sort by state in descending order. The ascending order is R < S < any other state.
 - v - sort by vmem in descending order. If pressed twice in sequence it will sort by vmem in ascending order.
