@@ -44,4 +44,7 @@ If mouse events are available, then the following mouse interaction are possible
 - clicking on the X at the top right of the screen will exit the program
 - clicking on any of the columns names will sort them the same way as pressing their respective hotkey, including inverting the sorting.
 - clicking on the Filter line will enter filter edit mode. If you are already in filter edit mode, then clicking on the Filter line will exit filter edit mode.
-- clicking anywhere while in filter edit mode will result in you exiting filter edit mode and the action of any previous mouse action will occur, other than entering filter edit mode.    
+- clicking anywhere while in filter edit mode will result in you exiting filter edit mode and the action of any previous mouse action will occur, other than entering filter edit mode. 
+
+## Example Image
+![example](Images/example.png)   
