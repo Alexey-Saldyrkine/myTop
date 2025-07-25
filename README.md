@@ -47,4 +47,5 @@ If mouse events are available, then the following mouse interaction are possible
 - clicking anywhere while in filter edit mode will result in you exiting filter edit mode and the action of any previous mouse action will occur, other than entering filter edit mode. 
 
 ## Example Image
+The image shows myTop running with the filter set to "sh" and sorted by cpu usage in descending order
 ![example](Images/example.png)   
