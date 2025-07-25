@@ -86,6 +86,7 @@ struct dataTable {
 	int sum = 0;
 	int solidCount = 0;
 	unsigned int softWidth = 0;
+	std::string filter = "";
 	dataTable(std::vector<std::string> colN, std::vector<int> colW) :
 			colNames(colN), colWidth(colW) {
 		for (int i : colWidth) {
@@ -102,6 +103,29 @@ struct dataTable {
 		getmaxyx(win, y, x);
 		softWidth = (x - sum - 2) / (colNames.size() + 1 - solidCount);
 		printHeaders();
+		updateFilterBar();
+	}
+
+	void updateFilterBar() {
+		std::string str { "Filter:" };
+		str += filter;
+
+		int len = x - 2 - str.size();
+		if (len < 0) {
+			str = str.substr(0, x - 2);
+		} else {
+			str += std::string(len, ' ');
+		}
+		mvwprintw(win, 1, 1, str.c_str());
+	}
+	void processFilterKey(int c) {
+		if (' ' <= c && c <= '~') {
+			filter += (char) c;
+		} else if (c == KEY_BACKSPACE) {
+			if (filter.size() > 0)
+				filter.pop_back();
+		}
+		updateFilterBar();
 	}
 
 	void printHeaders() {
@@ -118,10 +142,22 @@ struct dataTable {
 				str += std::string(spaceLen, ' ');
 			}
 		}
-		mvwprintw(win, 1, 1, str.c_str());
+		mvwprintw(win, 2, 1, str.c_str());
 
 	}
-	void printLine(int i, std::vector<std::string> data) {
+
+	bool testFilter(const std::vector<std::string> &data) {
+		bool ret = false;
+		for (const auto &str : data) {
+			if (str.find(filter) != std::string::npos) {
+				ret = true;
+				break;
+			}
+		}
+		return ret;
+	}
+
+	void printLine(int i, const std::vector<std::string> &data) {
 		std::string str;
 		for (unsigned int i = 0; i < data.size(); i++) {
 			unsigned int width = (
@@ -180,6 +216,7 @@ struct procInfoWin {
 	long int upTime;
 	int listOffset = 0;
 	bool toggleName = 1;
+	bool filterEditMode = 0;
 	sortModeEnum sortMode = sortModeEnum::None;
 	std::unordered_map<int, procInfo> procMap;
 	dataTable table { { "pid", "state", "vmem", "cpu#", "cpu%%", "name" }, { 6,
@@ -207,7 +244,12 @@ struct procInfoWin {
 	}
 
 	void processMouse(MEVENT event) {
-		if (event.y == 1) {
+		if (filterEditMode) {
+			filterEditMode = false;
+		}
+		if (event.y == 1 && filterEditMode == false) {
+			filterEditMode = true;
+		} else if (event.y == 2) {
 			int x = event.x;
 			unsigned int i = 0;
 			for (int w : table.colWidth) {
@@ -234,9 +276,23 @@ struct procInfoWin {
 				listOffset = 0;
 		} else if (c == KEY_DOWN) {
 			listOffset++;
-		} else {
-
+		}
+		if (filterEditMode == 1) {
 			switch (c) {
+			case '\n':
+			case '\r':
+			case KEY_ENTER:
+				filterEditMode = false;
+				break;
+			default:
+				table.processFilterKey(c);
+				break;
+			}
+		} else {
+			switch (c) {
+			case 'f':
+				filterEditMode = 1;
+				break;
 			case 'o':
 				sortMode = sortModeEnum::None;
 				break;
@@ -446,29 +502,48 @@ struct procInfoWin {
 		return ret;
 	}
 
-	void printPidData(int pid, int x) {
+	std::vector<std::string> pidToData(int pid) {
 		auto info = procMap[pid];
 		std::string name = (
 				toggleName == 0 ?
 						(info.cmdLine.size() > 0 ? info.cmdLine : info.name) :
 						info.name);
-		table.printLine(x,
-				{ std::to_string(info.pid), std::string(1, info.state),
-						formatVmem(info.vsize), std::to_string(info.processor),
-						std::to_string(info.cpuUsage).substr(0, 4) + "%%", name });
+		return {std::to_string(info.pid), std::string(1, info.state), formatVmem(
+					info.vsize), std::to_string(info.processor), std::to_string(
+					info.cpuUsage).substr(0, 4) + "%%", name};
+	}
+
+	void printPidData(const std::vector<std::string> &data, int x) {
+		table.printLine(x, data);
 	}
 
 	void printData() {
 		int wy, wx;
 		getmaxyx(win, wy, wx);
 
-		unsigned int n = std::max(wy - 3, 1);
+		unsigned int n = std::max(wy - 4, 1);
 		updateData();
+		int pidFilterOffset = 0;
 		auto vec = infoToVec();
 		for (unsigned int i = 0; i < n; i++) {
-			if (i + listOffset < vec.size()) {
-				int pid = vec[i + listOffset];
-				printPidData(pid, i + 2);
+			if (i + listOffset + pidFilterOffset < vec.size()) {
+				int pid = vec[i + listOffset + pidFilterOffset];
+				std::vector<std::string> data = pidToData(pid);
+				bool earlyCountinueFlag = false;
+				while (table.testFilter(data) == false) {
+					pidFilterOffset++;
+					if (i + listOffset + pidFilterOffset >= vec.size()) {
+						earlyCountinueFlag = true;
+						break;
+					}
+					pid = vec[i + listOffset + pidFilterOffset];
+					data = pidToData(pid);
+				}
+				if (earlyCountinueFlag) {
+					n++;
+					continue;
+				}
+				printPidData(data, i + 3);
 				int y, x;
 				getyx(win, y, x);
 				y = y + 0;

@@ -22,7 +22,7 @@ int main() {
 		doupdate();
 		timeout(1000);
 		int c = getch();
-		if (c == 'q') {
+		if (c == 'q' && win.proc->filterEditMode == 0) {
 			exitFlag = false;
 		} else if (c == KEY_MOUSE) {
 			MEVENT event;
